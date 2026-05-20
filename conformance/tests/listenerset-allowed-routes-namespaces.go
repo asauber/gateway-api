@@ -37,7 +37,7 @@ func init() {
 
 var ListenerSetAllowedRoutesNamespaces = confsuite.ConformanceTest{
 	ShortName:   "ListenerSetAllowedRoutesNamespaces",
-	Description: "ListenerSet listeners allow routes from the specified namespace",
+	Description: "ListenerSet listeners allow routes from the specified namespace, including cross-namespace ListenerSets with label-based selectors",
 	Features: []features.FeatureName{
 		features.SupportGateway,
 		features.SupportListenerSet,
@@ -59,7 +59,7 @@ var ListenerSetAllowedRoutesNamespaces = confsuite.ConformanceTest{
 			Type:   string(gatewayv1.GatewayConditionAccepted),
 			Status: metav1.ConditionTrue,
 		})
-		kubernetes.GatewayMustHaveAttachedListeners(t, suite.Client, suite.TimeoutConfig, gwNN, 2)
+		kubernetes.GatewayMustHaveAttachedListeners(t, suite.Client, suite.TimeoutConfig, gwNN, 3)
 
 		listenerSetGK := schema.GroupKind{
 			Group: gatewayv1.GroupVersion.Group,
@@ -197,6 +197,64 @@ var ListenerSetAllowedRoutesNamespaces = confsuite.ConformanceTest{
 
 			for i := range testCases {
 				tc := testCases[i]
+				t.Run(tc.GetTestCaseName(i), func(t *testing.T) {
+					t.Parallel()
+					http.MakeRequestAndExpectEventuallyConsistentResponse(t, suite.RoundTripper, suite.TimeoutConfig, gwAddr, tc)
+				})
+			}
+		})
+
+		t.Run("Cross-namespace ListenerSet using label selector", func(t *testing.T) {
+			selectorLsNS := "gateway-api-ls-selector-cross-ns"
+			selectorAllowedNS := "gateway-api-ls-selector-allowed-ns"
+			selectorDeniedNS := "gateway-api-ls-selector-denied-ns"
+			selectorLsNN := types.NamespacedName{Name: "ls-selector-cross-ns", Namespace: selectorLsNS}
+			selectorLsRef := kubernetes.NewResourceRef(listenerSetGK, selectorLsNN)
+
+			acceptedRoute := types.NamespacedName{Name: "route-in-selector-allowed-ns", Namespace: selectorAllowedNS}
+			kubernetes.RoutesAndParentMustBeAccepted(t, suite.Client, suite.TimeoutConfig, suite.ControllerName, selectorLsRef, &gatewayv1.HTTPRoute{}, acceptedRoute)
+
+			kubernetes.HTTPRouteMustHaveCondition(t, suite.Client, suite.TimeoutConfig,
+				types.NamespacedName{Name: "route-in-selector-denied-ns", Namespace: selectorDeniedNS},
+				selectorLsNN,
+				metav1.Condition{
+					Type:   string(gatewayv1.RouteConditionAccepted),
+					Status: metav1.ConditionFalse,
+					Reason: string(gatewayv1.RouteReasonNotAllowedByListeners),
+				})
+
+			kubernetes.HTTPRouteMustHaveCondition(t, suite.Client, suite.TimeoutConfig,
+				types.NamespacedName{Name: "route-in-selector-ls-ns", Namespace: selectorLsNS},
+				selectorLsNN,
+				metav1.Condition{
+					Type:   string(gatewayv1.RouteConditionAccepted),
+					Status: metav1.ConditionFalse,
+					Reason: string(gatewayv1.RouteReasonNotAllowedByListeners),
+				})
+
+			kubernetes.ListenerSetStatusMustHaveListeners(t, suite.Client, suite.TimeoutConfig, selectorLsNN, []gatewayv1.ListenerEntryStatus{
+				{
+					Name:           "ls-selector-listener",
+					SupportedKinds: generateSupportedRouteKinds(),
+					AttachedRoutes: 1,
+					Conditions:     generateAcceptedListenerConditions(),
+				},
+			})
+
+			selectorTestCases := []http.ExpectedResponse{
+				{
+					Request:   http.Request{Host: "ls-selector-cross-ns.com", Path: "/allowed"},
+					Backend:   confsuite.InfraBackendServiceNameV1,
+					Namespace: ns,
+				},
+				{
+					Request:  http.Request{Host: "ls-selector-cross-ns.com", Path: "/denied"},
+					Response: http.Response{StatusCode: 404},
+				},
+			}
+
+			for i := range selectorTestCases {
+				tc := selectorTestCases[i]
 				t.Run(tc.GetTestCaseName(i), func(t *testing.T) {
 					t.Parallel()
 					http.MakeRequestAndExpectEventuallyConsistentResponse(t, suite.RoundTripper, suite.TimeoutConfig, gwAddr, tc)
