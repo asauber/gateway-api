@@ -1,0 +1,83 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-ls-parentref-scope
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: "{GATEWAY_CLASS_NAME}"
+  listeners:
+  - name: gw-scope-listener
+    port: 80
+    protocol: HTTP
+    hostname: "gw-scope.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+  allowedListeners:
+    namespaces:
+      from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-parentref-scope
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-ls-parentref-scope
+    namespace: gateway-conformance-infra
+  listeners:
+  - name: ls-scope-listener
+    port: 80
+    protocol: HTTP
+    hostname: "ls-scope.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# route-gw-only: parentRef is the Gateway only.
+# Expected: status.parents has exactly one entry — the Gateway.
+# The ListenerSet must NOT appear in status.parents.
+# The LS listener's AttachedRoutes must NOT include this route.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-gw-only
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  - name: gateway-ls-parentref-scope
+    namespace: gateway-conformance-infra
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /gw-only
+    backendRefs:
+    - name: infra-backend-v1
+      port: 8080
+---
+# route-ls-only: parentRef is the ListenerSet only.
+# Expected: status.parents has exactly one entry — the ListenerSet.
+# The Gateway must NOT appear in status.parents.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-ls-only
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: ls-parentref-scope
+    namespace: gateway-conformance-infra
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /ls-only
+    backendRefs:
+    - name: infra-backend-v2
+      port: 8080
