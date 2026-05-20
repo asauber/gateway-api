@@ -1,0 +1,87 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-ls-section-name-test
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: "{GATEWAY_CLASS_NAME}"
+  listeners:
+  # The Gateway has one listener named "gw-listener".
+  # There is NO listener named "ls-only-listener" here.
+  - name: gw-listener
+    port: 80
+    protocol: HTTP
+    hostname: "gw-section-name-test.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+  allowedListeners:
+    namespaces:
+      from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-section-name-test
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-ls-section-name-test
+    namespace: gateway-conformance-infra
+  listeners:
+  # This listener is only defined in the ListenerSet, not in the Gateway.
+  # A Route referencing the Gateway with sectionName: ls-only-listener
+  # must NOT attach successfully — the Gateway cannot see ListenerSet listeners.
+  - name: ls-only-listener
+    port: 80
+    protocol: HTTP
+    hostname: "ls-section-name-test.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# This route attaches correctly to the ListenerSet directly.
+# It should be Accepted=True.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-via-listenerset
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: ls-section-name-test
+    namespace: gateway-conformance-infra
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /ls-route
+    backendRefs:
+    - name: infra-backend-v1
+      port: 8080
+---
+# This route references the GATEWAY with sectionName="ls-only-listener",
+# which is the name of a listener that exists only in the child ListenerSet,
+# not in Gateway.spec.listeners.  Accepted must be False / NoMatchingParent.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-bad-gw-section-name
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  - name: gateway-ls-section-name-test
+    namespace: gateway-conformance-infra
+    sectionName: ls-only-listener   # exists in ListenerSet, not in Gateway
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /bad-gw-section
+    backendRefs:
+    - name: infra-backend-v2
+      port: 8080
