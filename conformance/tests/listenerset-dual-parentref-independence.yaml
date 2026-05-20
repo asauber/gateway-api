@@ -1,0 +1,96 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-dual-parentref
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: "{GATEWAY_CLASS_NAME}"
+  listeners:
+  - name: gw-dual-listener
+    port: 80
+    protocol: HTTP
+    hostname: "gw-dual.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+  # Note: there is NO listener named "ls-dual-listener" here — that name
+  # exists only in the child ListenerSet below.
+  allowedListeners:
+    namespaces:
+      from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-dual-parentref
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-dual-parentref
+    namespace: gateway-conformance-infra
+  listeners:
+  - name: ls-dual-listener
+    port: 80
+    protocol: HTTP
+    hostname: "ls-dual.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# route-dual-ref has two valid parentRefs: the Gateway and the ListenerSet.
+# Both parentRef entries must show Accepted=True independently.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-dual-ref
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  - name: gateway-dual-parentref
+    namespace: gateway-conformance-infra
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: ls-dual-parentref
+    namespace: gateway-conformance-infra
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /dual
+    backendRefs:
+    - name: infra-backend-v1
+      port: 8080
+---
+# route-bad-gw-section references the Gateway with sectionName="ls-dual-listener",
+# which is a listener name that exists ONLY in the child ListenerSet, not in
+# Gateway.spec.listeners.
+#
+# Expected result:
+#   parentRef Gateway: Accepted=False, reason=NoMatchingParent
+#   parentRef ListenerSet: Accepted=True  (independent evaluation)
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-bad-gw-section
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  # This parentRef targets the Gateway with a sectionName that lives only in the LS.
+  - name: gateway-dual-parentref
+    namespace: gateway-conformance-infra
+    sectionName: ls-dual-listener   # does NOT exist in Gateway.spec.listeners
+  # This parentRef is valid and must be accepted independently.
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: ls-dual-parentref
+    namespace: gateway-conformance-infra
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /bad-gw
+    backendRefs:
+    - name: infra-backend-v2
+      port: 8080
