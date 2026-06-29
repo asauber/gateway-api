@@ -201,3 +201,25 @@ spec:
     backendRefs:
     - name: infra-backend-v2
       port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: listener-set-http-routing-1-hostname-route
+  namespace: gateway-conformance-infra
+spec:
+  parentRefs:
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: listener-set-http-routing-1
+    namespace: gateway-conformance-infra
+  hostnames:
+  - "listener-set-http-routing-1-listener-1.com"
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /listener-set-http-routing-1-hostname-route
+    backendRefs:
+    - name: infra-backend-v3
+      port: 8080

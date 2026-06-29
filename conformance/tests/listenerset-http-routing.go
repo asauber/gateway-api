@@ -63,6 +63,7 @@ var ListenerSetHTTPRouting = confsuite.ConformanceTest{
 			{Name: "attaches-to-all-listeners", Namespace: ns},
 			{Name: "listener-set-http-routing-1-route", Namespace: ns},
 			{Name: "listener-set-http-routing-1-section-route", Namespace: ns},
+			{Name: "listener-set-http-routing-1-hostname-route", Namespace: ns},
 		}
 		listenerSetGK := schema.GroupKind{
 			Group: gatewayv1.GroupVersion.Group,
@@ -74,8 +75,9 @@ var ListenerSetHTTPRouting = confsuite.ConformanceTest{
 			{
 				Name:           "listener-set-http-routing-1-listener-1",
 				SupportedKinds: generateSupportedRouteKinds(),
-				// This attaches to attaches-to-all-listeners, listener-set-http-routing-1-route, listener-set-http-routing-1-section-route
-				AttachedRoutes: 3,
+				// This attaches to attaches-to-all-listeners, listener-set-http-routing-1-route,
+				// listener-set-http-routing-1-section-route, and listener-set-http-routing-1-hostname-route
+				AttachedRoutes: 4,
 				Conditions:     generateAcceptedListenerConditions(),
 			},
 			{
@@ -275,6 +277,33 @@ var ListenerSetHTTPRouting = confsuite.ConformanceTest{
 				Request:   http.Request{Host: "listener-set-http-routing-2-listener-2.com", Path: "/listener-set-http-routing-2-route"},
 				Backend:   confsuite.InfraBackendServiceNameV2,
 				Namespace: ns,
+			},
+			// Requests to the listener-set-http-routing-1-hostname-route should only succeed on the listener
+			// whose hostname intersects with the Route hostname
+			{
+				Request:  http.Request{Host: "gateway-listener-1.com", Path: "/listener-set-http-routing-1-hostname-route"},
+				Response: http.Response{StatusCode: 404},
+			},
+			{
+				Request:  http.Request{Host: "gateway-listener-2.com", Path: "/listener-set-http-routing-1-hostname-route"},
+				Response: http.Response{StatusCode: 404},
+			},
+			{
+				Request:   http.Request{Host: "listener-set-http-routing-1-listener-1.com", Path: "/listener-set-http-routing-1-hostname-route"},
+				Backend:   confsuite.InfraBackendServiceNameV3,
+				Namespace: ns,
+			},
+			{
+				Request:  http.Request{Host: "listener-set-http-routing-1-listener-2.com", Path: "/listener-set-http-routing-1-hostname-route"},
+				Response: http.Response{StatusCode: 404},
+			},
+			{
+				Request:  http.Request{Host: "listener-set-http-routing-2-listener-1.com", Path: "/listener-set-http-routing-1-hostname-route"},
+				Response: http.Response{StatusCode: 404},
+			},
+			{
+				Request:  http.Request{Host: "listener-set-http-routing-2-listener-2.com", Path: "/listener-set-http-routing-1-hostname-route"},
+				Response: http.Response{StatusCode: 404},
 			},
 		}
 
