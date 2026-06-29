@@ -12,7 +12,7 @@ spec:
     hostname: "gw-parentref.com"
     allowedRoutes:
       namespaces:
-        from: Same
+        from: All
   allowedListeners:
     namespaces:
       from: Same

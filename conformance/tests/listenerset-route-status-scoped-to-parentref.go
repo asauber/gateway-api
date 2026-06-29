@@ -54,6 +54,14 @@ var ListenerSetRouteStatusScopedToParentRef = confsuite.ConformanceTest{
 			Status: metav1.ConditionTrue,
 		})
 		kubernetes.GatewayMustHaveAttachedListeners(t, suite.Client, suite.TimeoutConfig, gwNN, 1)
+		kubernetes.GatewayStatusMustHaveListeners(t, suite.Client, suite.TimeoutConfig, gwNN, []gatewayv1.ListenerStatus{
+			{
+				Name:           "gw-parentref-listener",
+				SupportedKinds: generateSupportedRouteKinds(),
+				AttachedRoutes: 1,
+				Conditions:     generateAcceptedListenerConditions(),
+			},
+		})
 
 		listenerSetGK := schema.GroupKind{
 			Group: gatewayv1.GroupVersion.Group,
@@ -77,7 +85,7 @@ var ListenerSetRouteStatusScopedToParentRef = confsuite.ConformanceTest{
 				Type:   string(gatewayv1.RouteConditionAccepted),
 				Status: metav1.ConditionTrue,
 			})
-			kubernetes.HTTPRouteMustHaveParents(t, suite.Client, suite.TimeoutConfig, gwOnlyRouteNN,
+			kubernetes.HTTPRouteMustHaveExactParents(t, suite.Client, suite.TimeoutConfig, gwOnlyRouteNN,
 				[]gatewayv1.RouteParentStatus{
 					{
 						ParentRef: gatewayv1.ParentReference{
@@ -102,7 +110,7 @@ var ListenerSetRouteStatusScopedToParentRef = confsuite.ConformanceTest{
 		t.Run("ListenerSet-only parentRef", func(t *testing.T) {
 			lsOnlyRouteNN := types.NamespacedName{Name: "route-parentref-lsonly", Namespace: ns}
 			kubernetes.RoutesAndParentMustBeAccepted(t, suite.Client, suite.TimeoutConfig, suite.ControllerName, lsRef, &gatewayv1.HTTPRoute{}, lsOnlyRouteNN)
-			kubernetes.HTTPRouteMustHaveParents(t, suite.Client, suite.TimeoutConfig, lsOnlyRouteNN,
+			kubernetes.HTTPRouteMustHaveExactParents(t, suite.Client, suite.TimeoutConfig, lsOnlyRouteNN,
 				[]gatewayv1.RouteParentStatus{
 					{
 						ParentRef: gatewayv1.ParentReference{

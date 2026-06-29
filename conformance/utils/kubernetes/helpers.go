@@ -794,6 +794,16 @@ func RouteTypeMustHaveParentsField(t *testing.T, routeType any) string {
 }
 
 func RouteMustHaveParents(t *testing.T, cli client.Client, timeoutConfig config.TimeoutConfig, routeName types.NamespacedName, parents []gatewayv1.RouteParentStatus, namespaceRequired bool, routeType any) {
+	routeMustHaveParents(t, cli, timeoutConfig, routeName, parents, namespaceRequired, routeType, false)
+}
+
+// RouteMustHaveExactParents waits for the specified Route to have exactly the
+// expected parents in status, with no additional parent entries.
+func RouteMustHaveExactParents(t *testing.T, cli client.Client, timeoutConfig config.TimeoutConfig, routeName types.NamespacedName, parents []gatewayv1.RouteParentStatus, namespaceRequired bool, routeType any) {
+	routeMustHaveParents(t, cli, timeoutConfig, routeName, parents, namespaceRequired, routeType, true)
+}
+
+func routeMustHaveParents(t *testing.T, cli client.Client, timeoutConfig config.TimeoutConfig, routeName types.NamespacedName, parents []gatewayv1.RouteParentStatus, namespaceRequired bool, routeType any, exact bool) {
 	t.Helper()
 
 	routeTypeName := RouteTypeMustHaveParentsField(t, routeType)
@@ -819,6 +829,10 @@ func RouteMustHaveParents(t *testing.T, cli client.Client, timeoutConfig config.
 		}
 
 		actual = reflect.ValueOf(cliObj).Elem().FieldByName("Status").FieldByName("Parents").Interface().([]v1alpha2.RouteParentStatus)
+		if exact && len(actual) != len(parents) {
+			tlog.Logf(t, "%s %s expected exactly %d parents, got %d", routeTypeName, routeName, len(parents), len(actual))
+			return false, nil
+		}
 		return parentsForRouteMatch(t, routeName, parents, actual, namespaceRequired), nil
 	})
 	require.NoErrorf(t, waitErr, "error waiting for %s to have parents matching expectations", routeTypeName)
@@ -829,6 +843,12 @@ func RouteMustHaveParents(t *testing.T, cli client.Client, timeoutConfig config.
 // if the specified timeout is exceeded.
 func HTTPRouteMustHaveParents(t *testing.T, client client.Client, timeoutConfig config.TimeoutConfig, routeName types.NamespacedName, parents []gatewayv1.RouteParentStatus, namespaceRequired bool) {
 	RouteMustHaveParents(t, client, timeoutConfig, routeName, parents, namespaceRequired, &gatewayv1.HTTPRoute{})
+}
+
+// HTTPRouteMustHaveExactParents waits for the specified HTTPRoute to have
+// exactly the expected parents in status, with no additional parent entries.
+func HTTPRouteMustHaveExactParents(t *testing.T, client client.Client, timeoutConfig config.TimeoutConfig, routeName types.NamespacedName, parents []gatewayv1.RouteParentStatus, namespaceRequired bool) {
+	RouteMustHaveExactParents(t, client, timeoutConfig, routeName, parents, namespaceRequired, &gatewayv1.HTTPRoute{})
 }
 
 // UDPRouteMustHaveParents waits for the specified UDPRoute to have parents

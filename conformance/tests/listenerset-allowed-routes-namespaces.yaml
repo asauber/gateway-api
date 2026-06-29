@@ -10,9 +10,11 @@ spec:
     port: 80
     protocol: HTTP
     hostname: "gateway-listener.com"
+    # Routes attached to ListenerSets are evaluated against the ListenerSet
+    # listener's policy, not this direct Gateway listener's policy.
     allowedRoutes:
       namespaces:
-        from: All
+        from: Same
   allowedListeners:
     namespaces:
       from: All
