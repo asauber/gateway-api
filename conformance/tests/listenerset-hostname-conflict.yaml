@@ -134,3 +134,216 @@ spec:
     allowedRoutes:
       namespaces:
         from: All
+---
+# --- Wildcard hostname conflict ---
+# Verify that conflict detection also applies to wildcard hostnames.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-ls-wildcard-conflict
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: "{GATEWAY_CLASS_NAME}"
+  listeners:
+  - name: gateway-listener
+    port: 80
+    protocol: HTTP
+    hostname: "gateway-wildcard-conflict-gw.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+  allowedListeners:
+    namespaces:
+      from: Same
+---
+# ls-wildcard-a is applied first (older creation timestamp) so it should
+# win the wildcard-hostname conflict resolution.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-wildcard-a
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-ls-wildcard-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+  # Wildcard hostname on port 80.  This listener should be accepted.
+  - name: wildcard-listener
+    port: 80
+    protocol: HTTP
+    hostname: "*.wildcard-hostname-conflict.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# ls-wildcard-b is applied second (newer creation timestamp).  Its listener
+# claims the identical wildcard hostname+port, which is a conflict.
+# The listener must be marked Conflicted=True / Accepted=False.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-wildcard-b
+  namespace: gateway-conformance-infra
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-ls-wildcard-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+  # Same wildcard hostname and port as ls-wildcard-a — this is a conflict.
+  - name: wildcard-listener
+    port: 80
+    protocol: HTTP
+    hostname: "*.wildcard-hostname-conflict.com"
+    allowedRoutes:
+      namespaces:
+        from: Same
+---
+# --- Cross-namespace hostname conflict precedence ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway-ls-cross-ns-conflict
+  namespace: gateway-conformance-infra
+spec:
+  gatewayClassName: "{GATEWAY_CLASS_NAME}"
+  listeners:
+  - name: gateway-listener
+    port: 80
+    protocol: HTTP
+    hostname: "cross-ns-conflict-gw.com"
+    allowedRoutes:
+      namespaces:
+        from: All
+  allowedListeners:
+    namespaces:
+      from: All
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-conflict-ns-a
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-cross-ns-conflict-a
+  namespace: gateway-api-ls-conflict-ns-a
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-ls-cross-ns-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+  - name: conflict-listener
+    port: 80
+    protocol: HTTP
+    hostname: "cross-ns-conflict.com"
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: unique-a-listener
+    port: 80
+    protocol: HTTP
+    hostname: "unique-a.com"
+    allowedRoutes:
+      namespaces:
+        from: All
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway-api-ls-conflict-ns-b
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: ListenerSet
+metadata:
+  name: ls-cross-ns-conflict-b
+  namespace: gateway-api-ls-conflict-ns-b
+spec:
+  parentRef:
+    kind: Gateway
+    group: gateway.networking.k8s.io
+    name: gateway-ls-cross-ns-conflict
+    namespace: gateway-conformance-infra
+  listeners:
+  - name: conflict-listener
+    port: 80
+    protocol: HTTP
+    hostname: "cross-ns-conflict.com"
+    allowedRoutes:
+      namespaces:
+        from: All
+  - name: unique-b-listener
+    port: 80
+    protocol: HTTP
+    hostname: "unique-b.com"
+    allowedRoutes:
+      namespaces:
+        from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-for-ls-a
+  namespace: gateway-api-ls-conflict-ns-a
+spec:
+  parentRefs:
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: ls-cross-ns-conflict-a
+    namespace: gateway-api-ls-conflict-ns-a
+    sectionName: conflict-listener
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /route-a
+    backendRefs:
+    - name: infra-backend-v1
+      namespace: gateway-conformance-infra
+      port: 8080
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: route-for-ls-b-unique
+  namespace: gateway-api-ls-conflict-ns-b
+spec:
+  parentRefs:
+  - kind: ListenerSet
+    group: gateway.networking.k8s.io
+    name: ls-cross-ns-conflict-b
+    namespace: gateway-api-ls-conflict-ns-b
+    sectionName: unique-b-listener
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /route-b
+    backendRefs:
+    - name: infra-backend-v2
+      namespace: gateway-conformance-infra
+      port: 8080
+---
+kind: ReferenceGrant
+apiVersion: gateway.networking.k8s.io/v1
+metadata:
+  name: ls-cross-ns-conflict-ref-grant
+  namespace: gateway-conformance-infra
+spec:
+  from:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: gateway-api-ls-conflict-ns-a
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    namespace: gateway-api-ls-conflict-ns-b
+  to:
+  - group: ""
+    kind: Service
