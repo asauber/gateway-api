@@ -17,7 +17,9 @@ limitations under the License.
 package tls
 
 import (
+	"context"
 	cryptotls "crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"strings"
@@ -128,6 +130,35 @@ func MakeTLSRequestAndExpectEventuallyConsistentFailureResponse(t *testing.T, r 
 	if clientCertificate != nil && clientCertificateKey != nil {
 		assert.True(t, clientCertificatePresented, "client certificate was not presented during the handshake")
 	}
+}
+
+// MakeTLSConnectionAndExpectEventuallyConsistentFailure initiates a TCP connection and TLS
+// handshake using the supplied server certificate as a trust anchor, then expects it to fail.
+func MakeTLSConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeoutConfig config.TimeoutConfig, gwAddr string, serverCertificate []byte, serverName string) {
+	t.Helper()
+
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(serverCertificate) {
+		t.Fatal("failed to add server certificate to trust pool")
+	}
+
+	dialer := &cryptotls.Dialer{
+		Config: &cryptotls.Config{
+			RootCAs:    certPool,
+			ServerName: serverName,
+			MinVersion: cryptotls.VersionTLS12,
+		},
+	}
+
+	assert.Eventually(t, func() bool {
+		attemptCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+		conn, err := dialer.DialContext(attemptCtx, "tcp", gwAddr)
+		cancel()
+		if conn != nil {
+			conn.Close()
+		}
+		return err != nil
+	}, timeoutConfig.MaxTimeToConsistency, time.Second, "TLS connection unexpectedly succeeded")
 }
 
 // MakeTLSConnectionAndExpectEventuallyConnectionRejection initiates a TCP connection, then initiates TLS Handshake, and expects the TCP connection to be eventually rejected.
