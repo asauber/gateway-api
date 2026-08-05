@@ -97,11 +97,11 @@ var GatewayListenerMixedProtocolConflict = confsuite.ConformanceTest{
 		require.NoErrorf(t, err, "failed to split Gateway address %q", gwAddr)
 		tlsAddr := net.JoinHostPort(gwIP, "8443")
 
-		// Gather PKI data needed to attempt a raw TLS connection against the HTTPS listener
+		// Gather certificate material needed to attempt a raw TLS connection against the HTTPS listener
 		httpsCert, _, err := kubernetes.GetTLSSecret(suite.Client, httpsCertNN)
 		require.NoErrorf(t, err, "failed to get HTTPS listener certificate")
 
-		// Gather PKI data needed to attempt a raw TLS connection against the TLS listener
+		// Gather certificate material needed to attempt a raw TLS connection against the TLS listener
 		tlsCAConfigMap, err := kubernetes.GetConfigMapData(suite.Client, suite.TimeoutConfig, tlsCACertNN)
 		require.NoErrorf(t, err, "failed to get TLS backend CA certificate")
 		tlsCACert, ok := tlsCAConfigMap["ca.crt"]
