@@ -38,7 +38,7 @@ func init() {
 
 var ListenerSetMixedProtocolConflict = confsuite.ConformanceTest{
 	ShortName:   "ListenerSetMixedProtocolConflict",
-	Description: "A conflicted ListenerSet TLS listener must not serve traffic",
+	Description: "A conflicted ListenerSet TLS listener must not serve traffic while the precedent Gateway listener does serve traffic",
 	Features: []features.FeatureName{
 		features.SupportGateway,
 		features.SupportHTTPRoute,
