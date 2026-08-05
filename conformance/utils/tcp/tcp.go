@@ -34,6 +34,7 @@ import (
 
 	tcpserver "sigs.k8s.io/gateway-api-conformance-images/echo-basic/tcpserver"
 	"sigs.k8s.io/gateway-api/conformance/utils/config"
+	"sigs.k8s.io/gateway-api/conformance/utils/http"
 	"sigs.k8s.io/gateway-api/conformance/utils/tlog"
 )
 
@@ -55,7 +56,7 @@ type ExpectedResponse struct {
 func MakeTCPConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeoutConfig config.TimeoutConfig, address string) {
 	t.Helper()
 
-	assert.Eventually(t, func() bool {
+	http.AwaitConvergence(t, timeoutConfig.RequiredConsecutiveSuccesses, timeoutConfig.MaxTimeToConsistency, func(_ time.Duration) bool {
 		attemptCtx, cancel := context.WithTimeout(t.Context(), time.Second)
 		conn, err := (&net.Dialer{}).DialContext(attemptCtx, "tcp", address)
 		cancel()
@@ -63,7 +64,7 @@ func MakeTCPConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeout
 			conn.Close()
 		}
 		return err != nil
-	}, timeoutConfig.MaxTimeToConsistency, time.Second, "TCP connection unexpectedly succeeded")
+	})
 }
 
 // MakeTCPRequestAndExpectEventuallyValidResponse makes a TCP request with the given parameters,

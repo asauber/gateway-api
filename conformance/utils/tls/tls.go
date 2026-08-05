@@ -150,7 +150,7 @@ func MakeTLSConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeout
 		},
 	}
 
-	assert.Eventually(t, func() bool {
+	http.AwaitConvergence(t, timeoutConfig.RequiredConsecutiveSuccesses, timeoutConfig.MaxTimeToConsistency, func(_ time.Duration) bool {
 		attemptCtx, cancel := context.WithTimeout(t.Context(), time.Second)
 		conn, err := dialer.DialContext(attemptCtx, "tcp", gwAddr)
 		cancel()
@@ -158,7 +158,7 @@ func MakeTLSConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeout
 			conn.Close()
 		}
 		return err != nil
-	}, timeoutConfig.MaxTimeToConsistency, time.Second, "TLS connection unexpectedly succeeded")
+	})
 }
 
 // MakeTLSConnectionAndExpectEventuallyConnectionRejection initiates a TCP connection, then initiates TLS Handshake, and expects the TCP connection to be eventually rejected.
