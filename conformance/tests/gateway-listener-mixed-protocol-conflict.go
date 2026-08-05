@@ -50,9 +50,6 @@ var GatewayListenerMixedProtocolConflict = confsuite.ConformanceTest{
 		gwNN := types.NamespacedName{Name: "gateway-listener-conflicts", Namespace: ns}
 		controlRouteNN := types.NamespacedName{Name: "mixed-protocol-conflict-http", Namespace: ns}
 
-		httpsCertNN := types.NamespacedName{Name: "tls-validity-checks-certificate", Namespace: ns}
-		tlsCACertNN := types.NamespacedName{Name: "tls-checks-ca-certificate", Namespace: ns}
-
 		kubernetes.NamespacesMustBeReady(t, suite.Client, suite.TimeoutConfig, []string{ns})
 		gwAddr, err := kubernetes.WaitForGatewayAddress(t, suite.Client, suite.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "gateway-listener-conflicts-http"))
 		require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
@@ -98,10 +95,12 @@ var GatewayListenerMixedProtocolConflict = confsuite.ConformanceTest{
 		tlsAddr := net.JoinHostPort(gwIP, "8443")
 
 		// Gather certificate material needed to attempt a raw TLS connection against the HTTPS listener
+		httpsCertNN := types.NamespacedName{Name: "tls-validity-checks-certificate", Namespace: ns}
 		httpsCert, _, err := kubernetes.GetTLSSecret(suite.Client, httpsCertNN)
 		require.NoErrorf(t, err, "failed to get HTTPS listener certificate")
 
 		// Gather certificate material needed to attempt a raw TLS connection against the TLS listener
+		tlsCACertNN := types.NamespacedName{Name: "tls-checks-ca-certificate", Namespace: ns}
 		tlsCAConfigMap, err := kubernetes.GetConfigMapData(suite.Client, suite.TimeoutConfig, tlsCACertNN)
 		require.NoErrorf(t, err, "failed to get TLS backend CA certificate")
 		tlsCACert, ok := tlsCAConfigMap["ca.crt"]

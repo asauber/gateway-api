@@ -59,6 +59,7 @@ var GatewaySecretMissingReferenceGrant = suite.ConformanceTest{
 				Reason: string(v1.ListenerReasonRefNotPermitted),
 			}})
 
+			// The control route must be fully programmed
 			gwAddr, err := kubernetes.WaitForGatewayAddress(t, s.Client, s.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "http"))
 			require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
 			kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, s.Client, s.TimeoutConfig, controlRouteNN, gwNN)
@@ -74,7 +75,7 @@ var GatewaySecretMissingReferenceGrant = suite.ConformanceTest{
 			require.NoErrorf(t, err, "failed to get referenced TLS certificate")
 			gwIP, _, err := net.SplitHostPort(gwAddr)
 			require.NoErrorf(t, err, "failed to split Gateway address %q", gwAddr)
-			// A * wildcard matches one hostname label, not a hierarchical domain.
+			// A * wildcard does not match a hierarchical domain, so attempt with hostname "test"
 			tls.MakeTLSConnectionAndExpectEventuallyConsistentFailure(t, s.TimeoutConfig, net.JoinHostPort(gwIP, "443"), certificate, "test")
 		})
 	},

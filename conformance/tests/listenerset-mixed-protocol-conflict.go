@@ -49,19 +49,17 @@ var ListenerSetMixedProtocolConflict = confsuite.ConformanceTest{
 	Test: func(t *testing.T, suite *confsuite.ConformanceTestSuite) {
 		ns := confsuite.InfrastructureNamespace
 		gwNN := types.NamespacedName{Name: "gateway-listenerset-conflicts", Namespace: ns}
-		listenerSetNN := types.NamespacedName{Name: "listenerset-mixed-protocol-conflict", Namespace: ns}
-		httpRouteNN := types.NamespacedName{Name: "listenerset-mixed-protocol-control", Namespace: ns}
-		tlsCACertNN := types.NamespacedName{Name: "tls-checks-ca-certificate", Namespace: ns}
 
 		kubernetes.NamespacesMustBeReady(t, suite.Client, suite.TimeoutConfig, []string{ns})
-
 		gwAddr, err := kubernetes.WaitForGatewayAddress(t, suite.Client, suite.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "http"))
 		require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
 
 		t.Run("HTTP control listener serves traffic", func(t *testing.T) {
+			httpRouteNN := types.NamespacedName{Name: "listenerset-mixed-protocol-control", Namespace: ns}
 			kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, suite.Client, suite.TimeoutConfig, httpRouteNN, gwNN)
 			kubernetes.HTTPRouteMustHaveResolvedRefsConditionsTrue(t, suite.Client, suite.TimeoutConfig, httpRouteNN, gwNN)
 
+			// The control route must be fully programmed
 			http.MakeRequestAndExpectEventuallyConsistentResponse(t, suite.RoundTripper, suite.TimeoutConfig, gwAddr, http.ExpectedResponse{
 				Request:   http.Request{Host: "control.example.com", Path: "/control"},
 				Response:  http.Response{StatusCode: 200},
@@ -71,6 +69,9 @@ var ListenerSetMixedProtocolConflict = confsuite.ConformanceTest{
 		})
 
 		t.Run("conflicted ListenerSet listener has ProtocolConflict status", func(t *testing.T) {
+			listenerSetNN := types.NamespacedName{Name: "listenerset-mixed-protocol-conflict", Namespace: ns}
+
+			// The ListenerSet remains accepted and programmed because its HTTP listener is valid.
 			kubernetes.ListenerSetMustHaveCondition(t, suite.Client, suite.TimeoutConfig, listenerSetNN, metav1.Condition{
 				Type:   string(v1.ListenerSetConditionAccepted),
 				Status: metav1.ConditionTrue,
@@ -80,6 +81,7 @@ var ListenerSetMixedProtocolConflict = confsuite.ConformanceTest{
 				Status: metav1.ConditionTrue,
 			})
 
+			// The TLS listener conflicts with the direct Gateway HTTPS listener on port 8443.
 			kubernetes.ListenerSetListenersMustHaveConditions(t, suite.Client, suite.TimeoutConfig, listenerSetNN, []metav1.Condition{
 				{
 					Type:   string(v1.ListenerConditionAccepted),
@@ -102,12 +104,36 @@ var ListenerSetMixedProtocolConflict = confsuite.ConformanceTest{
 		gwIP, _, err := net.SplitHostPort(gwAddr)
 		require.NoErrorf(t, err, "failed to split Gateway address %q", gwAddr)
 		tlsAddr := net.JoinHostPort(gwIP, "8443")
+
+		t.Run("direct Gateway HTTPS listener serves traffic", func(t *testing.T) {
+			httpsRouteNN := types.NamespacedName{Name: "listenerset-mixed-protocol-https", Namespace: ns}
+			httpsCertNN := types.NamespacedName{Name: "tls-validity-checks-certificate", Namespace: ns}
+
+			// The direct Gateway listener wins precedence over the conflicting ListenerSet listener.
+			kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, suite.Client, suite.TimeoutConfig, httpsRouteNN, gwNN)
+			kubernetes.HTTPRouteMustHaveResolvedRefsConditionsTrue(t, suite.Client, suite.TimeoutConfig, httpsRouteNN, gwNN)
+
+			// Gather certificate material needed to attempt a raw TLS connection against the direct HTTPS listener.
+			httpsCert, _, err := kubernetes.GetTLSSecret(suite.Client, httpsCertNN)
+			require.NoErrorf(t, err, "failed to get HTTPS listener certificate")
+
+			tls.MakeTLSRequestAndExpectEventuallyConsistentResponse(t, suite.RoundTripper, suite.TimeoutConfig, tlsAddr, httpsCert, nil, nil, "https.example.org", http.ExpectedResponse{
+				Request:   http.Request{Host: "https.example.org", Path: "/https"},
+				Response:  http.Response{StatusCode: 200},
+				Backend:   confsuite.InfraBackendServiceNameV1,
+				Namespace: ns,
+			})
+		})
+
+		// Gather certificate material needed to attempt a raw TLS connection against the TLS listener
+		tlsCACertNN := types.NamespacedName{Name: "tls-checks-ca-certificate", Namespace: ns}
 		tlsCAConfigMap, err := kubernetes.GetConfigMapData(suite.Client, suite.TimeoutConfig, tlsCACertNN)
 		require.NoErrorf(t, err, "failed to get TLS backend CA certificate")
 		tlsCACert, ok := tlsCAConfigMap["ca.crt"]
 		require.True(t, ok, "ca.crt not found in TLS backend CA ConfigMap")
 
 		t.Run("conflicted ListenerSet TLS listener rejects traffic", func(t *testing.T) {
+			// The rejected TLS listener must not complete a TLS handshake.
 			tls.MakeTLSConnectionAndExpectEventuallyConsistentFailure(t, suite.TimeoutConfig, tlsAddr, []byte(tlsCACert), "abc.example.com")
 		})
 	},
