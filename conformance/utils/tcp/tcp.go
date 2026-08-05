@@ -50,6 +50,22 @@ type ExpectedResponse struct {
 	Hostname     string // Optional, if set will verify if the SNI hostname captured by TLS matches this value
 }
 
+// MakeTCPConnectionAndExpectEventuallyConsistentFailure attempts a TCP connection and
+// expects it to fail. This is useful for listeners that must not be programmed.
+func MakeTCPConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeoutConfig config.TimeoutConfig, address string) {
+	t.Helper()
+
+	assert.Eventually(t, func() bool {
+		attemptCtx, cancel := context.WithTimeout(t.Context(), time.Second)
+		conn, err := (&net.Dialer{}).DialContext(attemptCtx, "tcp", address)
+		cancel()
+		if conn != nil {
+			conn.Close()
+		}
+		return err != nil
+	}, timeoutConfig.MaxTimeToConsistency, time.Second, "TCP connection unexpectedly succeeded")
+}
+
 // MakeTCPRequestAndExpectEventuallyValidResponse makes a TCP request with the given parameters,
 // understanding that the request may fail for some amount of time.
 //
