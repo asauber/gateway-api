@@ -71,6 +71,7 @@ var GatewaySecretInvalidReferenceGrant = suite.ConformanceTest{
 				Namespace: ns,
 			})
 
+			// The rejected listener must not accept connections
 			certificate, _, err := kubernetes.GetTLSSecret(s.Client, certNN)
 			require.NoErrorf(t, err, "failed to get referenced TLS certificate")
 			gwIP, _, err := net.SplitHostPort(gwAddr)
