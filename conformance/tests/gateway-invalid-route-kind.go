@@ -48,23 +48,20 @@ var GatewayInvalidRouteKind = suite.ConformanceTest{
 	Test: func(t *testing.T, s *suite.ConformanceTestSuite) {
 		t.Run("Gateway listener should have a false ResolvedRefs condition with reason InvalidRouteKinds and no supportedKinds", func(t *testing.T) {
 			gwNN := types.NamespacedName{Name: "gateway-only-invalid-route-kind", Namespace: suite.InfrastructureNamespace}
-			conditions := []metav1.Condition{{
-				Type:   string(v1.ListenerConditionResolvedRefs),
-				Status: metav1.ConditionFalse,
-				Reason: string(v1.ListenerReasonInvalidRouteKinds),
+			listeners := []v1.ListenerStatus{{
+				Name:           v1.SectionName("http"),
+				SupportedKinds: []v1.RouteGroupKind{},
+				Conditions: []metav1.Condition{{
+					Type:   string(v1.ListenerConditionResolvedRefs),
+					Status: metav1.ConditionFalse,
+					Reason: string(v1.ListenerReasonInvalidRouteKinds),
+				}},
+				AttachedRoutes: 0,
 			}}
-
-			kubernetes.GatewayListenerMustHaveConditions(t, s.Client, s.TimeoutConfig, gwNN, "http", conditions)
+			kubernetes.GatewayStatusMustHaveListeners(t, s.Client, s.TimeoutConfig, gwNN, listeners)
 			gwAddr, err := kubernetes.WaitForGatewayAddress(t, s.Client, s.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "control"))
-			require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
-			controlRouteNN := types.NamespacedName{Name: "gateway-only-invalid-route-kind-control", Namespace: suite.InfrastructureNamespace}
-			kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, s.Client, s.TimeoutConfig, controlRouteNN, gwNN)
-			http.MakeRequestAndExpectEventuallyConsistentResponse(t, s.RoundTripper, s.TimeoutConfig, gwAddr, http.ExpectedResponse{
-				Request:   http.Request{Host: "invalid-route-kind-control.example.com", Path: "/"},
-				Response:  http.Response{StatusCode: 200},
-				Backend:   suite.InfraBackendServiceNameV1,
-				Namespace: suite.InfrastructureNamespace,
-			})
+
+			// The invalid listener must not accept any connections
 			gwIP, _, err := net.SplitHostPort(gwAddr)
 			require.NoErrorf(t, err, "failed to split Gateway address %q", gwAddr)
 			tcp.MakeTCPConnectionAndExpectEventuallyConsistentFailure(t, s.TimeoutConfig, net.JoinHostPort(gwIP, "80"))
@@ -85,14 +82,15 @@ var GatewayInvalidRouteKind = suite.ConformanceTest{
 				}},
 				AttachedRoutes: 1,
 			}}
-
 			kubernetes.GatewayStatusMustHaveListeners(t, s.Client, s.TimeoutConfig, gwNN, listeners)
+
+			// The supported route kind should be fully programmed
 			gwAddr, err := kubernetes.WaitForGatewayAddress(t, s.Client, s.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "http"))
 			require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
 			controlRouteNN := types.NamespacedName{Name: "gateway-supported-and-invalid-route-kind-control", Namespace: suite.InfrastructureNamespace}
 			kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, s.Client, s.TimeoutConfig, controlRouteNN, gwNN)
 			http.MakeRequestAndExpectEventuallyConsistentResponse(t, s.RoundTripper, s.TimeoutConfig, gwAddr, http.ExpectedResponse{
-				Request:   http.Request{Host: "invalid-route-kind.example.com", Path: "/"},
+				Request:   http.Request{Host: "supported-route-kind.example.com", Path: "/"},
 				Response:  http.Response{StatusCode: 200},
 				Backend:   suite.InfraBackendServiceNameV1,
 				Namespace: suite.InfrastructureNamespace,

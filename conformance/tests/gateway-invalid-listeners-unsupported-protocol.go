@@ -93,6 +93,7 @@ var GatewayListenerUnsupportedProtocol = suite.ConformanceTest{
 				Reason: string(gatewayv1.ListenerReasonUnsupportedProtocol),
 			}})
 
+			// The valid listener must be fully programmed
 			gwAddr, err := kubernetes.WaitForGatewayAddress(t, s.Client, s.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "http"))
 			require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
 			kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, s.Client, s.TimeoutConfig, controlRouteNN, gwNN)
@@ -103,6 +104,7 @@ var GatewayListenerUnsupportedProtocol = suite.ConformanceTest{
 				Namespace: suite.InfrastructureNamespace,
 			})
 
+			// The invalid listener must not accept connections
 			gwIP, _, err := net.SplitHostPort(gwAddr)
 			require.NoErrorf(t, err, "failed to split Gateway address %q", gwAddr)
 			tcp.MakeTCPConnectionAndExpectEventuallyConsistentFailure(t, s.TimeoutConfig, net.JoinHostPort(gwIP, "1111"))

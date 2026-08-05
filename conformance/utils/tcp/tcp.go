@@ -52,7 +52,7 @@ type ExpectedResponse struct {
 }
 
 // MakeTCPConnectionAndExpectEventuallyConsistentFailure attempts a TCP connection and
-// expects it to fail. This is useful for listeners that must not be programmed.
+// expects it to fail. This is useful for testing listeners that must not be programmed.
 func MakeTCPConnectionAndExpectEventuallyConsistentFailure(t *testing.T, timeoutConfig config.TimeoutConfig, address string) {
 	t.Helper()
 

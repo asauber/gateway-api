@@ -46,14 +46,6 @@ var GatewayInvalidTLSConfiguration = suite.ConformanceTest{
 	Manifests: []string{"tests/gateway-invalid-tls-configuration.yaml"},
 	Parallel:  true,
 	Test: func(t *testing.T, s *suite.ConformanceTestSuite) {
-		ns := suite.InfrastructureNamespace
-		certNN := types.NamespacedName{Name: "tls-validity-checks-certificate", Namespace: ns}
-		conditions := []metav1.Condition{{
-			Type:   string(v1.ListenerConditionResolvedRefs),
-			Status: metav1.ConditionFalse,
-			Reason: string(v1.ListenerReasonInvalidCertificateRef),
-		}}
-
 		testCases := []struct {
 			name         string
 			gatewayName  string
@@ -86,19 +78,31 @@ var GatewayInvalidTLSConfiguration = suite.ConformanceTest{
 			},
 		}
 
+		ns := suite.InfrastructureNamespace
+		certNN := types.NamespacedName{Name: "tls-validity-checks-certificate", Namespace: ns}
 		serverCertificate, _, err := kubernetes.GetTLSSecret(s.Client, certNN)
 		require.NoError(t, err, "failed to get TLS certificate")
+
+		conditions := []metav1.Condition{{
+			Type:   string(v1.ListenerConditionResolvedRefs),
+			Status: metav1.ConditionFalse,
+			Reason: string(v1.ListenerReasonInvalidCertificateRef),
+		}}
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
 				gwNN := types.NamespacedName{Name: tc.gatewayName, Namespace: ns}
 				controlRouteNN := types.NamespacedName{Name: tc.controlRoute, Namespace: ns}
 
+				// The certificate must be recognized as invalid
 				kubernetes.GatewayListenerMustHaveConditions(t, s.Client, s.TimeoutConfig, gwNN, "https", conditions)
+
+				// The control route must be recognized as accepted
 				gwAddr, err := kubernetes.WaitForGatewayAddress(t, s.Client, s.TimeoutConfig, kubernetes.NewGatewayRef(gwNN, "http"))
 				require.NoErrorf(t, err, "timed out waiting for Gateway address to be assigned")
 				kubernetes.HTTPRouteMustHaveRouteAcceptedConditionsTrue(t, s.Client, s.TimeoutConfig, controlRouteNN, gwNN)
 
+				// The control listener must serve traffic
 				http.MakeRequestAndExpectEventuallyConsistentResponse(t, s.RoundTripper, s.TimeoutConfig, gwAddr, http.ExpectedResponse{
 					Request:   http.Request{Host: tc.controlHost, Path: "/"},
 					Response:  http.Response{StatusCode: 200},
@@ -106,6 +110,7 @@ var GatewayInvalidTLSConfiguration = suite.ConformanceTest{
 					Namespace: ns,
 				})
 
+				// The invalid listener must not accept connections
 				gwIP, _, err := net.SplitHostPort(gwAddr)
 				require.NoErrorf(t, err, "failed to split Gateway address %q", gwAddr)
 				httpsAddr := net.JoinHostPort(gwIP, "443")
